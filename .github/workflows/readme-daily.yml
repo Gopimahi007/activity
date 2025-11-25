@@ -1,0 +1,54 @@
+name: Daily README Update
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # Runs daily at 00:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Get daily quote
+        id: quote
+        run: |
+          QUOTE=$(curl -s "https://api.quotable.io/random" | sed -n 's/.*"content":"\(.*\)","author".*/\1/p')
+          echo "quote=$QUOTE" >> $GITHUB_OUTPUT
+
+      - name: Build new section
+        id: build
+        run: |
+          TODAY=$(date +"%A, %d %B %Y")
+
+          echo "### 📅 Date: **$TODAY**" > new_section.md
+          echo "" >> new_section.md
+          echo "### 💬 Quote of the Day" >> new_section.md
+          echo "> _${{ steps.quote.outputs.quote }}_" >> new_section.md
+          echo "" >> new_section.md
+          echo "### 🟢 Auto-updated by GitHub Actions" >> new_section.md
+
+      - name: Update README
+        run: |
+          START="<!--START_SECTION:daily_update-->"
+          END="<!--END_SECTION:daily_update-->"
+
+          awk -v start="$START" -v end="$END" \
+              -v new="$(sed 's/[]\/$*.^|[]/\\&/g' new_section.md)" '
+            $0 ~ start {print; print new; skip=1; next}
+            $0 ~ end {skip=0}
+            skip==0 {print}
+          ' README.md > README_UPDATED.md
+
+          mv README_UPDATED.md README.md
+
+      - name: Commit changes
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add README.md
+          git commit -m "🔄 Daily README update" || exit 0
+          git push
